@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: socialflow-ry
+  name: task-schedule
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: 300m
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "90"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "90"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "90"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: task-schedule.ry.sf.lightai.cn
+    http:
+      paths:
+      - backend:
+          service:
+            name: task-schedule
+            port:
+              number: 80
+        path: /
+        pathType: ImplementationSpecific
+  tls:
+  - hosts:
+    - task-schedule.ry.sf.lightai.cn
+    secretName: task-schedule.ry.sf.lightai.cn-tls

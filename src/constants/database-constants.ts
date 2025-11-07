@@ -1,0 +1,2 @@
+export const MONGO_CONNECTION = Symbol('MONGO_CONNECTION');
+export const REDIS_CONNECTION = Symbol('REDIS_CONNECTION');

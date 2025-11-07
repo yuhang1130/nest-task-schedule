@@ -1,0 +1,81 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run web",
+      "type": "process",
+      "command": "osascript",
+      "args": [
+          "-e",
+          "tell application \"iTerm\"",
+          "-e", "activate",
+          "-e", "set newWindow to (create window with default profile)",
+          "-e", "tell current session of newWindow",
+          "-e", "write text \"cd '${workspaceFolder}' && npm run start:dev\"",
+          "-e", "end tell",
+          "-e", "end tell"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "Claude",
+      "type": "process",
+      "command": "osascript",
+      "args": [
+          "-e",
+          "tell application \"iTerm\"",
+          "-e", "activate",
+          "-e", "set newWindow to (create window with default profile)",
+          "-e", "tell current session of newWindow",
+          "-e", "write text \"cd '${workspaceFolder}' && claude\"",
+          "-e", "end tell",
+          "-e", "end tell"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "Run cron",
+      "type": "process",
+      "command": "osascript",
+      "args": [
+          "-e",
+          "tell application \"iTerm\"",
+          "-e", "activate",
+          "-e", "set newWindow to (create window with default profile)",
+          "-e", "tell current session of newWindow",
+          "-e", "write text \"cd '${workspaceFolder}' && npm run start:cron:dev\"",
+          "-e", "end tell",
+          "-e", "end tell"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "Run send-script",
+      "type": "process",
+      "command": "osascript",
+      "args": [
+          "-e",
+          "tell application \"iTerm\"",
+          "-e", "activate",
+          "-e", "set newWindow to (create window with default profile)",
+          "-e", "tell current session of newWindow",
+          "-e", "write text \"cd '${workspaceFolder}' && npm run start:send-script:dev\"",
+          "-e", "end tell",
+          "-e", "end tell"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "never"
+      }
+    }
+  ]
+}

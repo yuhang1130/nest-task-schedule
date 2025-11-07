@@ -1,0 +1,13 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: task-schedule
+  namespace: socialflow-ry
+spec:
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8090
+  selector:
+    app: task-schedule
+  type: ClusterIP

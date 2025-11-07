@@ -1,0 +1,197 @@
+#!groovy
+
+// 共享库引用
+@Library('jenkins-lib') _
+
+// 获取共享库里面的包
+def tools = new org.devops.tools()
+def kube = new org.devops.kubernetes()
+
+String harborUrl = kube.getHarborUrl()
+String slaveYAML = kube.getSimpleYAML()
+String gitUrl = scm.getUserRemoteConfigs()[0].getUrl()
+String scmCredentialsId = scm.getUserRemoteConfigs()[0].getCredentialsId()
+
+String envFlag = "${env.ENV_FLAG}"
+String envProxy = "${env.ENV_PROXY}"
+
+String projectGroup = "socialflow"
+String projectName = "task-schedule"
+
+allowProdEnvs = ['prod', 'main', 'master']
+
+k8sCredentialsId = 'socialflow-k8s-cli-key'
+if (!(envFlag in allowProdEnvs)) {
+  image = "${harborUrl}/daily/${projectName}"
+  k8sClusterContextName = 'none-prod'
+} else if (envFlag == 'prod') {
+  projectGroup = "rongyao"
+  image = "${harborUrl}/${projectGroup}/${projectName}"
+  k8sClusterContextName = 'rongyao-prod'
+}
+
+echo image
+echo gitUrl
+echo envFlag
+
+String k8sDirSuffix = "deploy/${envFlag}"
+String dockerDirSuffix = "deploy"
+String defaultBranch = "main-qa"
+
+// 定义模块及其描述
+def modules = [
+  'web': '构建 web 服务',
+  'cron': '构建 定时任务 服务',
+  'send-script': '构建 下发脚本 服务'
+]
+
+pipeline {
+  agent {
+    kubernetes {
+      yaml "${slaveYAML}"
+    }
+  }
+
+  options {
+    timestamps()  // 日志会有时间
+    skipDefaultCheckout()  // 删除隐式checkout scm语句
+    disableConcurrentBuilds()   // 禁止并行构建
+    timeout(time: 1, unit: 'HOURS')   // 流水线超时设置1h
+  }
+
+  parameters {
+    booleanParam(name: 'web', defaultValue: true, description: '构建 web 服务')
+    booleanParam(name: 'cron', defaultValue: true, description: '构建 定时任务 服务')
+    booleanParam(name: 'send-script', defaultValue: true, description: '构建 下发脚本 服务')
+
+    gitParameter (
+      branch: '',
+      branchFilter: 'origin/(.*)',          // (这会去除 origin/ 前缀)
+      defaultValue: "${defaultBranch}",
+      description: '请选择构建的branch或者tag',
+      listSize: '10',
+      name: 'BRANCH_TAG',
+      quickFilterEnabled: false,
+      selectedValue: 'NONE',
+      sortMode: 'NONE',
+      tagFilter: 'v*',                         // tag过滤条件
+      type: 'PT_BRANCH_TAG'                   // 插件参数类型
+    )
+    booleanParam (
+      defaultValue: false,
+      description: '是否跳过项目构建',
+      name: 'SKIP_BUILD'
+    )
+  }
+
+  environment {
+    // Dockerfile存放的位置，绝对路径
+    dockerDir = "${WORKSPACE}/${dockerDirSuffix}"
+    // k8s yaml文件目录，绝对路径
+    k8sDir = "${WORKSPACE}/${k8sDirSuffix}"
+  }
+
+  stages {
+    stage('Checkout SCM') {
+      steps {
+        timeout(time: 20, unit: "MINUTES") {
+          script {
+            tools.printMsg('checkout SCM', 'green')
+            // 确保分支标签包含origin前缀
+            ORIGIN_BRANCH_TAG = BRANCH_TAG.startsWith('origin/') ? BRANCH_TAG : "origin/${BRANCH_TAG}"
+            checkout([$class: 'GitSCM', branches: [[name: "${ORIGIN_BRANCH_TAG}"]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: "${scmCredentialsId}", url: "${gitUrl}"]]])
+            env.GIT_COMMIT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+            env.COMMIT_MSG = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
+            echo "BRANCH_TAG: ${BRANCH_TAG}. ORIGIN_BRANCH_TAG: ${ORIGIN_BRANCH_TAG}"
+            if ( ORIGIN_BRANCH_TAG ==~ /^origin.*/) {
+              env.imageTag = env.GIT_COMMIT
+            } else if ( ORIGIN_BRANCH_TAG ==~ /^v.*/) {
+              env.imageTag = env.ORIGIN_BRANCH_TAG
+            } else {
+              throw new Exception("choose branch_tag error. ORIGIN_BRANCH_TAG: ${ORIGIN_BRANCH_TAG}")
+            }
+          }
+        }
+      }
+    }
+
+    stage('构建Docker镜像') {
+      when { not { expression { return params.SKIP_BUILD } } }
+      steps {
+        timeout(time: 20, unit: "MINUTES") {
+          script {
+            tools.printMsg('构建Docker镜像', 'green')
+            dir("${WORKSPACE}") {
+              container('kaniko') {
+                sh """
+                  ENV_FLAG=${envFlag}
+                  /kaniko/executor --compressed-caching=false --build-arg ENV_FLAG=${envFlag} --build-arg GFW_PROXY=${envProxy} -c `pwd` --dockerfile ${dockerDir}/Dockerfile --cache=true --destination ${image}:${imageTag} --skip-tls-verify --ignore-path /busybox
+                """
+                // 使用循环构建镜像
+                modules.each { module, description ->
+                  if (params."${module}") {
+                    sh """
+                      echo "FROM ${image}:${imageTag}" | \
+                      /kaniko/executor --dockerfile /dev/stdin --destination ${image}-${module}:${imageTag}
+                    """
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    stage('发布到K8S') {
+      when { not { expression { return params.SKIP_BUILD } } }
+      steps {
+        timeout(time: 20, unit: "MINUTES") {
+          script {
+            tools.printMsg('发布到K8S', 'green')
+            withKubeConfig([credentialsId: "${k8sCredentialsId}", contextName: "${k8sClusterContextName}"]) {
+              container('kubectl') {
+                // 使用循环发布到 K8S
+                modules.each { module, description ->
+                  if (params."${module}") {
+                    sh """
+                      sed -i 's#<IMAGE>#'"${image}-${module}"'#' ${k8sDir}/${module}/deploy.yaml
+                      sed -i 's#<IMAGE_TAG>#'"${imageTag}"'#' ${k8sDir}/${module}/deploy.yaml
+                      kubectl apply -f ${k8sDir}/${module}
+                    """
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      script {
+        println("always")
+      }
+    }
+
+    success {
+      script {
+        currentBuild.description = "branch_tag: origin/${BRANCH_TAG} \n commit_id : ${GIT_COMMIT} \n image_tag : ${imageTag} \n commit_msg: ${COMMIT_MSG}"
+      }
+    }
+
+    failure {
+      script {
+        currentBuild.description = "构建失败"
+      }
+    }
+
+    aborted {
+      script {
+        currentBuild.description = "构建取消"
+      }
+    }
+  }
+}

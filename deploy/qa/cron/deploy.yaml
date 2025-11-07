@@ -1,0 +1,179 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: task-schedule-cron
+  name: task-schedule-cron
+  namespace: socialflow-ry
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: task-schedule-cron
+  strategy:
+    rollingUpdate:
+      maxSurge: 20%
+      maxUnavailable: 20%
+    type: RollingUpdate
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: task-schedule-cron
+    spec:
+      restartPolicy: Always
+      imagePullSecrets:
+        - name: pulluser
+      containers:
+      - image: <IMAGE>:<IMAGE_TAG>
+        name: task-schedule-cron
+        imagePullPolicy: IfNotPresent
+        args:
+        - "node"
+        - "/task-schedule/dist/microservices/cron-main.js"
+        env:
+        - name: DEPLOY_ENV
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: DEPLOY_ENV
+        - name: PORT
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: PORT
+        - name: MONGO_URL
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: MONGO_URL
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: REDIS_URL
+        - name: REDIS_PWD
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: REDIS_PWD
+        - name: REDIS_DB
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: REDIS_DB
+        # - name: DISABLE_MQ_CONSUMER
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: cm-task-schedule
+        #       key: DISABLE_MQ_CONSUMER
+        - name: REDIS_PREFIX
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: REDIS_PREFIX
+        - name: INSTANCES
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: INSTANCES
+        - name: LOG_LEVEL
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: LOG_LEVEL
+        - name: NO_COLOR
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: NO_COLOR
+        - name: LOG_FILE_ENABLED
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: LOG_FILE_ENABLED
+        - name: PULSAR_SERVICE_URL
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: PULSAR_SERVICE_URL
+        - name: PULSAR_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: PULSAR_TOKEN
+        - name: PULSAR_OPERATION_TIMEOUT_SECONDS
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: PULSAR_OPERATION_TIMEOUT_SECONDS
+        - name: DEFAULT_CONSUMER_SUBSCRIPTION
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: DEFAULT_CONSUMER_SUBSCRIPTION
+        - name: PULSAR_NAMESPACE
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: PULSAR_NAMESPACE
+        - name: PULSAR_CLUSTER
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: PULSAR_CLUSTER
+        - name: SUBSCRIPTION_INIT_POSITION
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: SUBSCRIPTION_INIT_POSITION
+        - name: IS_TRACE_ON
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: IS_TRACE_ON
+        - name: TRACE_GRPC_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: TRACE_GRPC_ENDPOINT
+        - name: TRACE_APP_KEY
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: TRACE_APP_KEY
+        - name: TRACE_SERVICE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: cm-task-schedule
+              key: TRACE_SERVICE_NAME
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - sleep 20
+        ports:
+        - containerPort: 8090
+        livenessProbe:
+          httpGet:
+            path: /deploy/live
+            port: 8090
+          initialDelaySeconds: 30
+          periodSeconds: 3
+        readinessProbe:
+          httpGet:
+            path: /deploy/ready
+            port: 8090
+          initialDelaySeconds: 40
+          periodSeconds: 3
+        resources:
+          limits:
+            cpu: 1
+            memory: 1Gi
+          requests:
+            cpu: 10m
+            memory: 512Mi
